@@ -51,7 +51,6 @@ final class CameraManager: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         session.beginConfiguration()
         session.sessionPreset = .high
 
-        // --- Camera: prefer ultra-wide to "zoom out" ---
         // --- Camera: pick the widest back camera available (no enum constants needed) ---
         let discovery = AVCaptureDevice.DiscoverySession(
             deviceTypes: [
@@ -65,9 +64,9 @@ final class CameraManager: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         )
 
         // Prefer the device that supports the smallest minAvailableVideoZoomFactor (widest view)
-        let device = discovery.devices.min(by: {
-            $0.minAvailableVideoZoomFactor < $1.minAvailableVideoZoomFactor
-        })
+        let device = discovery.devices.min { a, b in
+            a.minAvailableVideoZoomFactor < b.minAvailableVideoZoomFactor
+        }
 
         guard let cam = device,
               let input = try? AVCaptureDeviceInput(device: cam),
@@ -103,12 +102,13 @@ final class CameraManager: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         session.addOutput(out)
         self.videoOutput = out
 
-        // Force output orientation to landscape (this is key for rotation issues)
+        // Force output orientation to landscape (helps rotation issues)
         if let conn = out.connection(with: .video) {
             if conn.isVideoOrientationSupported {
                 conn.videoOrientation = desiredOrientation
             }
             if conn.isVideoMirroringSupported {
+                conn.automaticallyAdjustsVideoMirroring = false
                 conn.isVideoMirrored = false
             }
         }
@@ -135,8 +135,13 @@ final class CameraManager: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         if connection.isVideoOrientationSupported, connection.videoOrientation != desiredOrientation {
             connection.videoOrientation = desiredOrientation
         }
-        if connection.isVideoMirroringSupported, connection.isVideoMirrored {
-            connection.isVideoMirrored = false
+
+        // Prevent crash: must disable auto before setting mirroring
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            if connection.isVideoMirrored {
+                connection.isVideoMirrored = false
+            }
         }
 
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
