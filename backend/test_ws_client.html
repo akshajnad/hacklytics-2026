@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Caption Stream Test</title>
+  <style>
+    body { font-family: system-ui; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
+    #status { padding: 0.5rem; border-radius: 6px; margin-bottom: 1rem; }
+    #status.connected { background: #d4edda; color: #155724; }
+    #status.disconnected { background: #f8d7da; color: #721c24; }
+    #captions { min-height: 120px; padding: 1rem; background: #f5f5f5; border-radius: 8px; white-space: pre-wrap; }
+    input { width: 100%; padding: 0.5rem; margin-bottom: 0.5rem; box-sizing: border-box; }
+    button { padding: 0.5rem 1rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Caption stream test</h1>
+  <p>Connect to your backend (e.g. <code>ws://localhost:8765</code> or <code>ws://YOUR_PC_IP:8765</code>). Speak into the Mac mic to see captions.</p>
+  <input type="text" id="url" value="ws://localhost:8765" placeholder="ws://host:8765" />
+  <button id="connect">Connect</button>
+  <button id="disconnect" disabled>Disconnect</button>
+  <div id="status" class="disconnected">Disconnected</div>
+  <h2>Captions</h2>
+  <div id="captions"></div>
+
+  <script>
+    let ws = null;
+    const urlEl = document.getElementById('url');
+    const statusEl = document.getElementById('status');
+    const captionsEl = document.getElementById('captions');
+    const connectBtn = document.getElementById('connect');
+    const disconnectBtn = document.getElementById('disconnect');
+
+    function setConnected(connected) {
+      statusEl.textContent = connected ? 'Connected' : 'Disconnected';
+      statusEl.className = connected ? 'connected' : 'disconnected';
+      connectBtn.disabled = connected;
+      disconnectBtn.disabled = !connected;
+    }
+
+    function appendCaption(data) {
+      try {
+        const o = typeof data === 'string' ? JSON.parse(data) : data;
+        if (o.type !== 'caption') return;
+        const line = `[${o.caption_type}] ${o.text} (tone: ${o.tone}, vol: ${(o.volume * 100).toFixed(0)}%)\n`;
+        captionsEl.textContent += line;
+        captionsEl.scrollTop = captionsEl.scrollHeight;
+      } catch (e) {
+        captionsEl.textContent += `(parse error) ${data}\n`;
+      }
+    }
+
+    connectBtn.addEventListener('click', () => {
+      if (ws) return;
+      const url = urlEl.value.trim();
+      if (!url) return;
+      captionsEl.textContent = '';
+      ws = new WebSocket(url);
+      ws.onopen = () => setConnected(true);
+      ws.onclose = () => { ws = null; setConnected(false); };
+      ws.onerror = (e) => console.error(e);
+      ws.onmessage = (e) => appendCaption(e.data);
+    });
+
+    disconnectBtn.addEventListener('click', () => {
+      if (ws) { ws.close(); ws = null; setConnected(false); }
+    });
+  </script>
+</body>
+</html>

@@ -37,13 +37,13 @@ async def main() -> None:
 
     def on_transcript(text: str, caption_type: str) -> None:
         logger.info("Transcript [%s]: %s", caption_type, text[:80] + ("..." if len(text) > 80 else ""))
-        tone, tone_confidence = classify_tone(text, latest_volume[0])
+        tone, confidence = classify_tone(text, latest_volume[0])
         asyncio.create_task(
             broadcast_caption(
                 text=text,
                 caption_type=caption_type,
                 tone=tone,
-                tone_confidence=tone_confidence,
+                confidence=confidence,
                 volume=latest_volume[0],
             )
         )
