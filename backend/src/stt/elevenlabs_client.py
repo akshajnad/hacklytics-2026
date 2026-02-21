@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator, Callable, Optional
 
 from websockets.asyncio.client import connect
 from websockets.asyncio.client import ClientConnection
-from backend.src.dashboard.client import sentiment
+from backend.src.tone_analysis.client import sentiment
 
 logger = logging.getLogger(__name__)
 

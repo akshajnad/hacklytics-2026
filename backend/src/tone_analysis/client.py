@@ -158,6 +158,7 @@ def sentiment(text: str) -> dict[str, str]:
     
     return {"text": text, "tone": tone_label}
 
+
 def translate(
     text: str,
     to_lang: str,
@@ -192,6 +193,7 @@ def summarize(text: str) -> str:
         row = cur.fetchone()
         cur.close()
     return str(row[0]) if row else ""
+
 
 if __name__ == "__main__":
     transcript = """

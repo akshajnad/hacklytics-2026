@@ -1,22 +1,3 @@
 """
-Snowflake Cortex integration for LLM completions, sentiment, translate, and summarize.
+Dashboard module: Streamlit visualization for Snowflake data.
 """
-from backend.src.dashboard.client import (
-    DEFAULT_MODEL,
-    SUPPORTED_MODELS,
-    complete,
-    get_connection,
-    sentiment,
-    summarize,
-    translate,
-)
-
-__all__ = [
-    "complete",
-    "DEFAULT_MODEL",
-    "get_connection",
-    "sentiment",
-    "SUPPORTED_MODELS",
-    "summarize",
-    "translate",
-]
