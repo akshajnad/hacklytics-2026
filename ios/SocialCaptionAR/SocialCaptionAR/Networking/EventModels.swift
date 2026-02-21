@@ -9,25 +9,31 @@ import Foundation
 import SwiftUI
 
 struct CaptionEvent: Codable {
-    let t_ms: Int
+    let type: String
+    let t_ms: Int?
     let text: String
-    let tone: String
-    let volume: Double
+    let is_final: Bool?
+    let tone: ToneDTO?
+    let volume: Double?
+
+    var isFinal: Bool { is_final ?? false }
+    var toneValue: Tone {
+        if let t = tone { return Tone(label: t.label, confidence: t.confidence, hex: t.color_hex) }
+        return Tone(label: "neutral", confidence: 0.5, hex: "#9CA3AF")
+    }
+    var volumeValue: Double { volume ?? 0.0 }
+}
+
+struct ToneDTO: Codable {
+    let label: String
+    let confidence: Double
+    let color_hex: String
 }
 
 struct Tone: Equatable {
     let label: String
+    let confidence: Double
+    let hex: String
 
-    var color: Color {
-        switch label.lowercased() {
-        case "happy":       return Color(hex: "#22C55E")
-        case "excited":     return Color(hex: "#F59E0B")
-        case "calm":        return Color(hex: "#3B82F6")
-        case "sad":         return Color(hex: "#6366F1")
-        case "angry":       return Color(hex: "#EF4444")
-        case "frustrated":  return Color(hex: "#F97316")
-        case "surprised":   return Color(hex: "#A855F7")
-        default:            return Color(hex: "#9CA3AF")
-        }
-    }
+    var color: Color { Color(hex: hex) }
 }

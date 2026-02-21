@@ -1,11 +1,3 @@
-//
-//  LiveView.swift
-//  SocialCaptionAR
-//
-//  Created by Akshaj Nadimpalli on 2/21/26.
-//
-
-
 import SwiftUI
 import AVFoundation
 
@@ -23,7 +15,7 @@ struct LiveView: View {
             })
             .ignoresSafeArea()
 
-            // Always-on anchor UI (even when debug OFF)
+            // Always-on anchor UI
             if let layer = previewLayer {
                 SpeakerAnchorOverlayView(
                     faces: vm.faces,
@@ -32,19 +24,18 @@ struct LiveView: View {
                 )
             }
 
-            // Debug overlays (only when toggle ON)
+            // Debug overlays
             if debugOverlayEnabled, let layer = previewLayer {
                 DebugVisionOverlayView(
                     faces: vm.faces,
                     activeFaceId: vm.activeFaceId,
+                    bodies: vm.poseBodies,
+                    handPoints: vm.poseHandPoints,
                     previewLayer: layer
                 )
             }
 
-            // Settings icon top-right
-            Button {
-                showSettings = true
-            } label: {
+            Button { showSettings = true } label: {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.white)

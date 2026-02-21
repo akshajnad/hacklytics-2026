@@ -1,20 +1,48 @@
-"""Tone classifier - placeholder for text sentiment + prosody fusion."""
+from typing import Optional, Tuple
+import torch
+import torch.nn.functional as F
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-from typing import Optional
+MODEL_NAME = "cardiffnlp/twitter-roberta-base-sentiment-latest"
 
+class ToneClassifier:
+    def __init__(self):
+        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        self.model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
+        self.model.eval()
 
-def classify_tone(
-    text: str,
-    volume: Optional[float] = None,
-) -> tuple[str, float]:
-    """Return tone label and confidence (placeholder: neutral, 1.0).
+        # Model label mapping
+        self.labels = ["negative", "neutral", "positive"]
 
-    Args:
-        text: Transcribed text.
-        volume: Optional RMS volume for future prosody fusion.
+    def classify_tone(
+        self,
+        text: str,
+        volume: Optional[float] = None,
+    ) -> Tuple[str, float]:
 
-    Returns:
-        (tone, confidence). tone is one of neutral, positive, negative, etc.
-    """
-    # Placeholder: always return neutral with full confidence
-    return ("neutral", 1.0)
+        # Tokenize text
+        inputs = self.tokenizer(
+            text,
+            return_tensors="pt",
+            truncation=True,
+            padding=True
+        )
+
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            probs = F.softmax(outputs.logits, dim=1)[0]
+
+        confidence, predicted_class = torch.max(probs, dim=0)
+        tone = self.labels[predicted_class.item()]
+        confidence = confidence.item()
+
+        # 🔊 Optional simple prosody fusion
+        if volume is not None:
+            if volume > 0.7 and tone == "negative":
+                tone = "angry"
+                confidence = min(1.0, confidence + 0.1)
+            elif volume < 0.2 and tone == "negative":
+                tone = "sad"
+                confidence = min(1.0, confidence + 0.1)
+
+        return tone, float(confidence)

@@ -1,0 +1,30 @@
+{
+    "_name_or_path": "facebook/wav2vec2-base",
+    "architectures": [
+      "Wav2Vec2ForSequenceClassification"
+    ],
+    "model_type": "wav2vec2",
+    "num_labels": 8,
+    "hidden_size": 768,
+    "classifier_dropout": 0.1,
+    "id2label": {
+      "0": "neutral",
+      "1": "calm",
+      "2": "happy",
+      "3": "sad",
+      "4": "angry",
+      "5": "fearful",
+      "6": "disgust",
+      "7": "surprised"
+    },
+    "label2id": {
+      "neutral": 0,
+      "calm": 1,
+      "happy": 2,
+      "sad": 3,
+      "angry": 4,
+      "fearful": 5,
+      "disgust": 6,
+      "surprised": 7
+    }
+  }

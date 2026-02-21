@@ -19,6 +19,10 @@ final class ARViewModel: ObservableObject {
     @Published var wsStatus: String = "Disconnected"
     @Published var isMirrored: Bool = true
 
+    // NEW: publish pose so debug overlay can render skeleton/arm boxes
+    @Published var poseBodies: [VisionPoseTracker.BodyPose] = []
+    @Published var poseHandPoints: [CGPoint] = []
+
     let camera = CameraManager()
 
     private let faceTracker = VisionFaceTracker()
@@ -27,18 +31,12 @@ final class ARViewModel: ObservableObject {
     private let speakerDetector = MotionSpeakerDetector()
     private let wsClient = WebSocketClient()
 
-    // Buffer of active-speaker decisions to handle caption latency
-    private var speakerHistory = RingBuffer<SpeakerSample>(capacity: 90) // ~3s at 30fps
+    private var speakerHistory = RingBuffer<SpeakerSample>(capacity: 90)
+    private let anchorLatencySeconds: TimeInterval = 0.40
+    @Published var wsURLString: String = "ws://127.0.0.1:8000/ws"
 
-    // Tunables
-    private let anchorLatencySeconds: TimeInterval = 0.40 // anchor captions to who was active ~400ms ago
-
-    // Default WS URL – change to your Mac's local IP when running on a real device
-    // Example: ws://192.168.1.23:8765
-    @Published var wsURLString: String = "ws://127.0.0.1:8765"
-
-    // cache latest pose output
-    private var latestPoseOutput: VisionPoseTracker.Output = .init(bodyPoints: [], handPoints: [])
+    // cached pose (so face + pose don’t have to finish same moment)
+    private var latestPose: VisionPoseTracker.Output = .init(bodies: [], handPoints: [])
 
     func start() async {
         await camera.start()
@@ -73,35 +71,37 @@ final class ARViewModel: ObservableObject {
     }
 
     private func handleFrame(pixelBuffer: CVPixelBuffer) {
-        // update pose cache
-        poseTracker.processFrame(pixelBuffer: pixelBuffer) { [weak self] poseOut in
+        // Update pose cache (and publish for debug)
+        poseTracker.processFrame(pixelBuffer: pixelBuffer) { [weak self] out in
             guard let self else { return }
-            self.latestPoseOutput = poseOut
+            self.latestPose = out
+            Task { @MainActor in
+                self.poseBodies = out.bodies
+                self.poseHandPoints = out.handPoints
+            }
         }
 
-        // update faces + choose active
+        // Update faces + active speaker
         faceTracker.processFrame(pixelBuffer: pixelBuffer) { [weak self] detected in
             guard let self else { return }
 
             Task { @MainActor in
                 let now = Date().timeIntervalSince1970
-
                 let tracked = self.idAssigner.assignIDs(to: detected, now: now)
                 self.faces = tracked
 
-                let pose = self.latestPoseOutput
                 let out = self.speakerDetector.update(
                     faces: tracked,
-                    poseBodyPoints: pose.bodyPoints,
-                    poseHandPoints: pose.handPoints,
+                    bodies: self.latestPose.bodies,
                     now: now
                 )
 
-                // Ensure always under a face if any exist
                 if let id = out.activeFaceId {
                     self.activeFaceId = id
-                } else if let biggest = tracked.max(by: { $0.visionBoundingBox.width * $0.visionBoundingBox.height <
-                                                      $1.visionBoundingBox.width * $1.visionBoundingBox.height })?.id {
+                } else if let biggest = tracked.max(by: {
+                    ($0.visionBoundingBox.width * $0.visionBoundingBox.height) <
+                    ($1.visionBoundingBox.width * $1.visionBoundingBox.height)
+                })?.id {
                     self.activeFaceId = biggest
                 }
 
@@ -113,13 +113,13 @@ final class ARViewModel: ObservableObject {
     private func handleCaptionEvent(_ ev: CaptionEvent) {
         let now = Date().timeIntervalSince1970
         let anchorTime = now - anchorLatencySeconds
-
         let anchorFaceId = speakerHistory.closest(to: anchorTime)?.faceId ?? self.activeFaceId
 
         self.latestCaption = CaptionBubbleState(
             text: ev.text,
-            tone: Tone(label: ev.tone),
-            volume: ev.volume,
+            tone: ev.toneValue,
+            volume: ev.volumeValue,
+            isFinal: ev.isFinal,
             anchorFaceId: anchorFaceId,
             receivedAt: now
         )
