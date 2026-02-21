@@ -5,7 +5,6 @@
 //  Created by Akshaj Nadimpalli on 2/21/26.
 //
 
-
 import Foundation
 import AVFoundation
 
@@ -17,6 +16,11 @@ final class CameraManager: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     var onFrame: ((CVPixelBuffer, CMTime) -> Void)?
 
     private var isConfigured = false
+    private var videoOutput: AVCaptureVideoDataOutput?
+
+    // Choose how you want landscape to look on device:
+    // .landscapeRight usually matches holding phone with volume buttons DOWN on right side.
+    private let desiredOrientation: AVCaptureVideoOrientation = .landscapeRight
 
     func start() async {
         let granted = await requestCameraPermission()
@@ -47,32 +51,66 @@ final class CameraManager: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         session.beginConfiguration()
         session.sessionPreset = .high
 
-        // Camera
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
-              let input = try? AVCaptureDeviceInput(device: device),
+        // --- Camera: prefer ultra-wide to "zoom out" ---
+        // --- Camera: pick the widest back camera available (no enum constants needed) ---
+        let discovery = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [
+                .builtInTripleCamera,
+                .builtInDualWideCamera,
+                .builtInDualCamera,
+                .builtInWideAngleCamera
+            ],
+            mediaType: .video,
+            position: .back
+        )
+
+        // Prefer the device that supports the smallest minAvailableVideoZoomFactor (widest view)
+        let device = discovery.devices.min(by: {
+            $0.minAvailableVideoZoomFactor < $1.minAvailableVideoZoomFactor
+        })
+
+        guard let cam = device,
+              let input = try? AVCaptureDeviceInput(device: cam),
               session.canAddInput(input) else {
             session.commitConfiguration()
             return
         }
         session.addInput(input)
 
-        // Output frames for Vision
-        let videoOutput = AVCaptureVideoDataOutput()
-        videoOutput.alwaysDiscardsLateVideoFrames = true
-        videoOutput.videoSettings = [
+        // Ensure zoom = 1.0 (just in case)
+        do {
+            try cam.lockForConfiguration()
+            if cam.videoZoomFactor != 1.0 {
+                cam.videoZoomFactor = 1.0
+            }
+            cam.unlockForConfiguration()
+        } catch {
+            // ignore
+        }
+
+        // --- Output frames for Vision ---
+        let out = AVCaptureVideoDataOutput()
+        out.alwaysDiscardsLateVideoFrames = true
+        out.videoSettings = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
         ]
-        videoOutput.setSampleBufferDelegate(self, queue: outputQueue)
+        out.setSampleBufferDelegate(self, queue: outputQueue)
 
-        guard session.canAddOutput(videoOutput) else {
+        guard session.canAddOutput(out) else {
             session.commitConfiguration()
             return
         }
-        session.addOutput(videoOutput)
+        session.addOutput(out)
+        self.videoOutput = out
 
-        // Orientation
-        if let conn = videoOutput.connection(with: .video) {
-            conn.videoOrientation = .portrait
+        // Force output orientation to landscape (this is key for rotation issues)
+        if let conn = out.connection(with: .video) {
+            if conn.isVideoOrientationSupported {
+                conn.videoOrientation = desiredOrientation
+            }
+            if conn.isVideoMirroringSupported {
+                conn.isVideoMirrored = false
+            }
         }
 
         session.commitConfiguration()
@@ -92,6 +130,15 @@ final class CameraManager: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
+
+        // Keep the connection locked to landscape (prevents random 90° flips)
+        if connection.isVideoOrientationSupported, connection.videoOrientation != desiredOrientation {
+            connection.videoOrientation = desiredOrientation
+        }
+        if connection.isVideoMirroringSupported, connection.isVideoMirrored {
+            connection.isVideoMirrored = false
+        }
+
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let ts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         onFrame?(pixelBuffer, ts)

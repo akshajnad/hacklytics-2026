@@ -8,19 +8,16 @@
 
 import Foundation
 import Vision
-import CoreMedia
 import QuartzCore
 
 final class VisionFaceTracker {
     private let queue = DispatchQueue(label: "vision.queue")
     private let handler = VNSequenceRequestHandler()
 
-    // throttle to keep FPS reasonable
     private var lastRun: CFTimeInterval = 0
-    private let minInterval: CFTimeInterval = 1.0 / 15.0 // 15 fps vision
+    private let minInterval: CFTimeInterval = 1.0 / 15.0
 
     func processFrame(pixelBuffer: CVPixelBuffer,
-                      timestamp: CMTime,
                       completion: @escaping ([DetectedFace]) -> Void) {
 
         let now = CACurrentMediaTime()
@@ -30,7 +27,9 @@ final class VisionFaceTracker {
         queue.async {
             let req = VNDetectFaceLandmarksRequest()
             do {
-                try self.handler.perform([req], on: pixelBuffer, orientation: .right) // portrait, back camera
+                // For landscape-right camera feed, this is typically correct.
+                // If boxes are rotated 90°, swap to .right/.left and test once.
+                try self.handler.perform([req], on: pixelBuffer, orientation: .up)
             } catch {
                 completion([])
                 return
@@ -41,68 +40,19 @@ final class VisionFaceTracker {
                 return
             }
 
-            let faces: [DetectedFace] = results.map { obs in
-                let rectTopLeft = Self.visionRectToTopLeft(obs.boundingBox)
+            let detected = results.map { obs -> DetectedFace in
+                let bbox = obs.boundingBox // normalized, origin bottom-left
 
-                // Landmarks
-                let landmarks = obs.landmarks
-                let mouthLocal = Self.mouthLocalCenter(landmarks: landmarks)
-                let mouthOpen = Self.mouthOpenness(landmarks: landmarks)
-                let browRaise = Self.browRaise(landmarks: landmarks)
+                // Mouth points (outer lips)
+                var mouthPts: [CGPoint] = []
+                if let pts = obs.landmarks?.outerLips?.normalizedPoints {
+                    mouthPts = pts.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) } // still bottom-left
+                }
 
-                return DetectedFace(
-                    rect: rectTopLeft,
-                    mouthLocalCenter: mouthLocal,
-                    mouthOpen: mouthOpen,
-                    browRaise: browRaise
-                )
+                return DetectedFace(visionBoundingBox: bbox, mouthPoints: mouthPts)
             }
 
-            completion(faces)
+            completion(detected)
         }
-    }
-
-    // Vision boundingBox is normalized with origin bottom-left.
-    // Convert to normalized with origin top-left (easier in SwiftUI).
-    private static func visionRectToTopLeft(_ r: CGRect) -> CGRect {
-        CGRect(x: r.minX,
-               y: 1.0 - r.maxY,
-               width: r.width,
-               height: r.height)
-    }
-
-    // Returns mouth center in local face coords [0..1] with origin top-left
-    private static func mouthLocalCenter(landmarks: VNFaceLandmarks2D?) -> CGPoint? {
-        guard let pts = landmarks?.outerLips?.normalizedPoints, !pts.isEmpty else { return nil }
-        // pts are in local face coords with origin bottom-left
-        let avg = pts.reduce(CGPoint.zero) { partial, p in
-            CGPoint(x: partial.x + CGFloat(p.x), y: partial.y + CGFloat(p.y))
-        }
-        let x = avg.x / CGFloat(pts.count)
-        let yBottomLeft = avg.y / CGFloat(pts.count)
-        let yTopLeft = 1.0 - yBottomLeft
-        return CGPoint(x: x, y: yTopLeft)
-    }
-
-    // Mouth openness as fraction of face height (0..1-ish)
-    private static func mouthOpenness(landmarks: VNFaceLandmarks2D?) -> CGFloat? {
-        guard let pts = landmarks?.innerLips?.normalizedPoints, !pts.isEmpty else { return nil }
-        let ys = pts.map { CGFloat($0.y) } // bottom-left
-        guard let minY = ys.min(), let maxY = ys.max() else { return nil }
-        return maxY - minY
-    }
-
-    // Brow raise proxy: distance between eyebrow and eye (0..1-ish)
-    private static func browRaise(landmarks: VNFaceLandmarks2D?) -> CGFloat? {
-        guard
-            let brow = landmarks?.leftEyebrow?.normalizedPoints, !brow.isEmpty,
-            let eye = landmarks?.leftEye?.normalizedPoints, !eye.isEmpty
-        else { return nil }
-
-        let browY = brow.map { CGFloat($0.y) }.reduce(0, +) / CGFloat(brow.count)
-        let eyeY = eye.map { CGFloat($0.y) }.reduce(0, +) / CGFloat(eye.count)
-
-        // In bottom-left coords, eyebrow should be above eye, so browY > eyeY
-        return max(0, browY - eyeY)
     }
 }

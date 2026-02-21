@@ -12,75 +12,55 @@ import CoreGraphics
 final class FaceIDAssigner {
     private struct Track {
         var id: UUID
-        var rect: CGRect
+        var bbox: CGRect
         var lastSeen: TimeInterval
     }
 
     private var tracks: [Track] = []
-    private let maxDist: CGFloat = 0.18 // normalized distance threshold
+    private let maxDist: CGFloat = 0.18
     private let ttl: TimeInterval = 0.8
 
     func assignIDs(to detected: [DetectedFace], now: TimeInterval) -> [TrackedFace] {
-        // prune old tracks
         tracks.removeAll { now - $0.lastSeen > ttl }
 
-        var usedTrackIDs = Set<UUID>()
-        var result: [TrackedFace] = []
+        var used = Set<UUID>()
+        var out: [TrackedFace] = []
 
-        for face in detected {
-            let c = center(face.rect)
+        for f in detected {
+            let c = center(f.visionBoundingBox)
 
-            // find closest unused track
-            var bestIdx: Int? = nil
+            var bestIdx: Int?
             var bestD: CGFloat = .greatestFiniteMagnitude
 
-            for (i, t) in tracks.enumerated() where !usedTrackIDs.contains(t.id) {
-                let d = distance(center(t.rect), c)
-                if d < bestD {
-                    bestD = d
-                    bestIdx = i
-                }
+            for (i, t) in tracks.enumerated() where !used.contains(t.id) {
+                let d = hypot(center(t.bbox).x - c.x, center(t.bbox).y - c.y)
+                if d < bestD { bestD = d; bestIdx = i }
             }
 
             if let idx = bestIdx, bestD < maxDist {
-                // reuse existing
                 let id = tracks[idx].id
-                usedTrackIDs.insert(id)
-
-                tracks[idx].rect = face.rect
+                used.insert(id)
+                tracks[idx].bbox = f.visionBoundingBox
                 tracks[idx].lastSeen = now
 
-                result.append(TrackedFace(
-                    id: id,
-                    rect: face.rect,
-                    mouthLocalCenter: face.mouthLocalCenter,
-                    mouthOpen: face.mouthOpen,
-                    browRaise: face.browRaise
-                ))
+                out.append(TrackedFace(id: id,
+                                      visionBoundingBox: f.visionBoundingBox,
+                                      mouthPoints: f.mouthPoints))
             } else {
-                // new track
                 let id = UUID()
-                tracks.append(Track(id: id, rect: face.rect, lastSeen: now))
-                usedTrackIDs.insert(id)
+                tracks.append(Track(id: id, bbox: f.visionBoundingBox, lastSeen: now))
+                used.insert(id)
 
-                result.append(TrackedFace(
-                    id: id,
-                    rect: face.rect,
-                    mouthLocalCenter: face.mouthLocalCenter,
-                    mouthOpen: face.mouthOpen,
-                    browRaise: face.browRaise
-                ))
+                out.append(TrackedFace(id: id,
+                                      visionBoundingBox: f.visionBoundingBox,
+                                      mouthPoints: f.mouthPoints))
             }
         }
 
-        return result
+        return out
     }
 
     private func center(_ r: CGRect) -> CGPoint {
         CGPoint(x: r.midX, y: r.midY)
-    }
-
-    private func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
-        hypot(a.x - b.x, a.y - b.y)
     }
 }

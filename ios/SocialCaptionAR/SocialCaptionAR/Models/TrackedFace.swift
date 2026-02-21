@@ -9,29 +9,21 @@ import Foundation
 import CoreGraphics
 
 struct DetectedFace {
-    // Normalized rect in view coords (origin top-left)
-    let rect: CGRect
-    // Local face coords (0..1, origin top-left)
-    let mouthLocalCenter: CGPoint?
-    let mouthOpen: CGFloat?
-    let browRaise: CGFloat?
+    /// Vision boundingBox: normalized, origin bottom-left
+    let visionBoundingBox: CGRect
+
+    /// Mouth landmark points in Vision image coords (normalized, origin bottom-left)
+    let mouthPoints: [CGPoint]
 }
 
 struct TrackedFace: Identifiable {
     let id: UUID
-    let rect: CGRect // normalized, origin top-left
-    let mouthLocalCenter: CGPoint?
-    let mouthOpen: CGFloat?
-    let browRaise: CGFloat?
 
-    func rectInView(in size: CGSize) -> CGRect {
-        CGRect(
-            x: rect.minX * size.width,
-            y: rect.minY * size.height,
-            width: rect.width * size.width,
-            height: rect.height * size.height
-        )
-    }
+    /// Vision boundingBox (normalized, origin bottom-left)
+    let visionBoundingBox: CGRect
+
+    /// Mouth points (normalized, origin bottom-left)
+    let mouthPoints: [CGPoint]
 }
 
 struct SpeakerArrowState {
@@ -50,7 +42,6 @@ struct ListenerBadge: Identifiable {
         let t = now - createdAt
         if t < 0 { return 0 }
         if t > ttl { return 0 }
-        // simple fade out in last 0.4s
         if ttl - t < 0.4 { return Double((ttl - t) / 0.4) }
         return 1.0
     }
