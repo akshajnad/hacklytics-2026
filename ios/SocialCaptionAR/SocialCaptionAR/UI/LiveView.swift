@@ -23,7 +23,9 @@ struct LiveView: View {
                     activeFaceId: vm.activeFaceId,
                     // Full current websocket chunk (no concatenation) is rendered here.
                     latestCaption: vm.latestCaption,
-                    previewLayer: layer
+                    previewLayer: layer,
+                    nameMentionFaceId: vm.nameMentionFaceId,
+                    nameMentionUntil: vm.nameMentionUntil
                 )
             }
 

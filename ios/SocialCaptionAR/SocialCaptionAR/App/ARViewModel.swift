@@ -27,6 +27,10 @@ final class ARViewModel: ObservableObject {
     @Published var poseHandPoints: [CGPoint] = []
     @Published var perFaceScores: [UUID: Double] = [:]
 
+    // Name-mention bubble: shows above the speaker who said Om's name.
+    @Published var nameMentionFaceId: UUID? = nil
+    @Published var nameMentionUntil: TimeInterval = 0
+
     let camera = CameraManager()
 
     private let faceTracker = VisionFaceTracker()
@@ -195,6 +199,13 @@ final class ARViewModel: ObservableObject {
             anchorFaceId: anchorFaceId,
             receivedAt: now
         )
+        // Detect "Om" or "Ohm" mention (word-boundary, case-insensitive).
+        // Show bubble above the speaker who said it.
+        if let _ = ev.text.range(of: #"\b(om|ohm)\b"#, options: [.regularExpression, .caseInsensitive]) {
+            self.nameMentionFaceId = anchorFaceId
+            self.nameMentionUntil = now + 2.0
+        }
+
         log(
             "Caption received: is_final=\(ev.isFinal), text_len=\(ev.text.count), " +
             "tone=\(tone.label), volume=\(String(format: "%.3f", volume)), " +
