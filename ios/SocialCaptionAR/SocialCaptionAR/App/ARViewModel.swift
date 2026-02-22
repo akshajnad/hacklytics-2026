@@ -102,6 +102,41 @@ final class ARViewModel: ObservableObject {
             }
         }
 
+        speechManager.onAvailabilityChanged = { [weak self] isAvailable in
+            Task { @MainActor in
+                guard let self else { return }
+                guard !self.isUsingWebSocket else { return }
+                if !isAvailable, self.latestCaption == nil {
+                    self.latestCaption = CaptionBubbleState(
+                        text: "Speech unavailable",
+                        tone: self.fallbackTone,
+                        volume: self.fallbackVolume,
+                        isFinal: false,
+                        anchorFaceId: self.activeFaceId,
+                        receivedAt: Date().timeIntervalSince1970
+                    )
+                }
+            }
+        }
+
+        speechManager.onStatusUpdate = { [weak self] status in
+            Task { @MainActor in
+                guard let self else { return }
+                guard !self.isUsingWebSocket else { return }
+
+                if self.latestCaption?.text.isEmpty != false || status != "Listening…" {
+                    self.latestCaption = CaptionBubbleState(
+                        text: status,
+                        tone: self.fallbackTone,
+                        volume: self.fallbackVolume,
+                        isFinal: false,
+                        anchorFaceId: self.activeFaceId,
+                        receivedAt: Date().timeIntervalSince1970
+                    )
+                }
+            }
+        }
+
         reconcileCaptionSource()
     }
 
@@ -211,6 +246,16 @@ final class ARViewModel: ObservableObject {
         if shouldUseWebSocket {
             speechManager.stop()
         } else {
+            if latestCaption == nil {
+                latestCaption = CaptionBubbleState(
+                    text: "Starting speech recognition…",
+                    tone: fallbackTone,
+                    volume: fallbackVolume,
+                    isFinal: false,
+                    anchorFaceId: activeFaceId,
+                    receivedAt: Date().timeIntervalSince1970
+                )
+            }
             speechManager.start()
         }
     }
