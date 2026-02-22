@@ -40,7 +40,7 @@ final class ARViewModel: ObservableObject {
     // Websocket endpoint for realtime captions + final meeting upload.
     // - Simulator on same Mac: ws://127.0.0.1:8765
     // - Physical iPhone: replace 127.0.0.1 with your Mac's LAN IP (same Wi-Fi).
-    @Published var wsURLString: String = "ws://10.90.187.115:8765"
+    @Published var wsURLString: String = "ws://172.20.10.2:8765"
     private var meetingStartMs: Int64?
     private var meetingTranscripts: [MeetingTranscriptRecord] = []
     private var latestFrameImage: CIImage?
