@@ -93,7 +93,7 @@ async def main() -> None:
             return
 
         word_count = _count_words(cleaned_text)
-        current_bucket = word_count // 10
+        current_bucket = word_count // 5
 
         # If partial text shrinks/reset (new sentence segment), reset cadence state.
         if caption_type == "partial" and current_bucket < last_analyzed_word_bucket[0]:

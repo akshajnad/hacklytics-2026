@@ -45,6 +45,9 @@ final class ARViewModel: ObservableObject {
     private var meetingTranscripts: [MeetingTranscriptRecord] = []
     private var latestFrameImage: CIImage?
     private let ciContext = CIContext(options: nil)
+    private var lastCaptionAnchorFaceId: UUID?
+    private var lastSpeakerCaptionChunk: String = ""
+    private var pendingPriorSpeakerChunkForTrim: String?
 
     // cached pose (so face + pose don’t have to finish same moment)
     private var latestPose: VisionPoseTracker.Output = .init(bodies: [], handFingerCentroids: [], handPoints: [])
@@ -186,27 +189,51 @@ final class ARViewModel: ObservableObject {
         let timestampMs = Int64(ev.t_ms ?? Int(now * 1000))
         let tone = ev.toneValue
         let volume = ev.volumeValue
+        let incomingChunk = ev.text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let previousAnchor = lastCaptionAnchorFaceId,
+           previousAnchor != anchorFaceId {
+            pendingPriorSpeakerChunkForTrim = lastSpeakerCaptionChunk
+            // Clear immediately when speaker anchor changes.
+            latestCaption = nil
+        }
+
+        var normalizedChunk = incomingChunk
+        if let priorSpeakerChunk = pendingPriorSpeakerChunkForTrim {
+            let overlapResult = trimPriorSpeakerOverlap(
+                from: normalizedChunk,
+                priorSpeakerChunk: priorSpeakerChunk
+            )
+            normalizedChunk = overlapResult.text
+            if !overlapResult.didTrim {
+                pendingPriorSpeakerChunkForTrim = nil
+            }
+        }
+
+        let displayText = lastWords(in: normalizedChunk, count: 5)
 
         self.latestCaption = CaptionBubbleState(
-            text: ev.text,
+            text: displayText,
             tone: tone,
             volume: volume,
             isFinal: ev.isFinal,
             anchorFaceId: anchorFaceId,
             receivedAt: now
         )
+        lastCaptionAnchorFaceId = anchorFaceId
+        lastSpeakerCaptionChunk = normalizedChunk
         log(
-            "Caption received: is_final=\(ev.isFinal), text_len=\(ev.text.count), " +
+            "Caption received: is_final=\(ev.isFinal), text_len=\(displayText.count), " +
             "tone=\(tone.label), volume=\(String(format: "%.3f", volume)), " +
             "anchorFaceId=\(anchorFaceId?.uuidString ?? "nil")"
         )
 
         // Only committed/final chunks are persisted to the meeting transcript list.
-        if isMeetingRecording && ev.isFinal {
+        if isMeetingRecording && ev.isFinal && !normalizedChunk.isEmpty {
             meetingTranscripts.append(
                 MeetingTranscriptRecord(
                     speaker_id: anchorFaceId?.uuidString,
-                    text: ev.text,
+                    text: normalizedChunk,
                     tone: tone.label,
                     volume: volume,
                     timestamp_ms: timestampMs
@@ -218,6 +245,47 @@ final class ARViewModel: ObservableObject {
 
     private func currentTimestampMs() -> Int64 {
         Int64(Date().timeIntervalSince1970 * 1000)
+    }
+
+    private func lastWords(in text: String, count: Int) -> String {
+        guard count > 0 else { return "" }
+        let words = text
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+        guard !words.isEmpty else { return "" }
+        return words.suffix(count).joined(separator: " ")
+    }
+
+    private func trimPriorSpeakerOverlap(
+        from incomingChunk: String,
+        priorSpeakerChunk: String
+    ) -> (text: String, didTrim: Bool) {
+        let incomingWords = incomingChunk
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+        let priorWords = priorSpeakerChunk
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+
+        guard !incomingWords.isEmpty, !priorWords.isEmpty else {
+            return (incomingChunk, false)
+        }
+
+        let maxOverlap = min(incomingWords.count, priorWords.count)
+        if maxOverlap < 1 {
+            return (incomingChunk, false)
+        }
+
+        for overlap in stride(from: maxOverlap, through: 1, by: -1) {
+            let priorSuffix = Array(priorWords.suffix(overlap))
+            let incomingPrefix = Array(incomingWords.prefix(overlap))
+            if priorSuffix == incomingPrefix {
+                let remainingWords = incomingWords.dropFirst(overlap)
+                return (remainingWords.joined(separator: " "), true)
+            }
+        }
+
+        return (incomingChunk, false)
     }
 
     private func buildParticipantSnapshotRecords() -> [MeetingParticipantRecord] {
