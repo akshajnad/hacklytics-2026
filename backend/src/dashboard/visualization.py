@@ -2,16 +2,21 @@
 Streamlit dashboard for visualizing Snowflake data.
 Run with: streamlit run backend.src.dashboard.visualization
 """
+from backend.src.tone_analysis.client import summarize
 import os
 import sys
 from pathlib import Path
+
+# Ensure repo root is on path for backend.src imports
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+import io
+from PIL import Image, ImageDraw
+
 import streamlit as st
 import pandas as pd
 from dotenv import load_dotenv
 from backend.src.tone_analysis.client import get_connection
-
-# Ensure repo root is on path for backend.src imports
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 
 
@@ -21,8 +26,7 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 
 st.set_page_config(
-    page_title="Snowflake Dashboard",
-    page_icon="❄️",
+    page_title="Data Dashboard (powered by Snowflake)",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -69,6 +73,37 @@ def list_tables(database: str, schema: str) -> pd.DataFrame | str:
         ORDER BY TABLE_NAME
     """
     return run_query(sql)
+
+
+# Demo data for Meeting tab (used when no Snowflake tables)
+DEMO_IMAGE_IDS = ["face_001", "face_002", "face_003", "face_004"]
+DEMO_SPEAKER_VOLUMES = [
+    {"speaker": "Speaker 1", "avg_volume": 0.72},
+    {"speaker": "Speaker 2", "avg_volume": 0.58},
+    {"speaker": "Speaker 3", "avg_volume": 0.65},
+    {"speaker": "Speaker 4", "avg_volume": 0.41},
+]
+DEMO_HIGHLIGHTS = [
+    {"text": "We should prioritize the Q1 marketing campaign launch.", "timestamp": "00:12:34", "tone": "Excited"},
+    {"text": "The budget allocation looks solid—let's lock it in.", "timestamp": "00:18:22", "tone": "Calm"},
+    {"text": "Action items: John handles design, Maria owns analytics.", "timestamp": "00:24:10", "tone": "Neutral"},
+]
+
+
+def make_placeholder_image(image_id: str, size: int = 50) -> bytes:
+    """Create a placeholder avatar image for the given image_id."""
+    colors = ["#4a90d9", "#7b68ee", "#50c878", "#e67e22", "#e74c3c", "#9b59b6"]
+    idx = hash(image_id) % len(colors)
+    img = Image.new("RGB", (size, size), color=colors[idx])
+    draw = ImageDraw.Draw(img)
+    # Draw a simple face silhouette (circle + eyes)
+    margin = size // 6
+    draw.ellipse([margin, margin, size - margin, size - margin], outline="white", width=3)
+    draw.ellipse([margin + 15, margin + 25, margin + 35, margin + 45], fill="white")  # left eye
+    draw.ellipse([size - margin - 35, margin + 25, size - margin - 15, margin + 45], fill="white")  # right eye
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def render_charts(df: pd.DataFrame) -> None:
@@ -127,36 +162,27 @@ def render_charts(df: pd.DataFrame) -> None:
 
 
 def main() -> None:
-    st.title("❄️ Snowflake Data Dashboard")
+    st.title("Data Dashboard (powered by Snowflake)")
     st.markdown("Explore and visualize your Snowflake data.")
 
     # Sidebar: connection status
-    with st.sidebar:
-        st.header("Connection")
-        ok, result = test_connection()
-        if ok:
-            st.success("Connected")
-            st.caption(f"**Account:** {result['account']}")
-            st.caption(f"**Database:** {result.get('database', '-')}")
-            st.caption(f"**Schema:** {result.get('schema', '-')}")
-        else:
-            st.error("Not connected")
-            st.caption(str(result))
-            st.info("Set SNOWFLAKE_USER, SNOWFLAKE_PASSWORD, SNOWFLAKE_ACCOUNT in .env")
-
+    ok, result = test_connection()
     if not ok:
-        st.warning("Configure Snowflake credentials to use the dashboard.")
-        return
+        st.error("Not connected")
+        st.caption(str(result))
+        st.info("Set SNOWFLAKE_USER, SNOWFLAKE_PASSWORD, SNOWFLAKE_ACCOUNT in .env")
 
-    # Tabs: Overview, Query, Tables
-    tab1, tab2, tab3 = st.tabs(["Overview", "Query & Visualize", "Tables"])
+    # Tabs: Overview, Query, Tables, Meeting
+    tab1, tab2 = st.tabs(["Overview", "Meeting"])
 
     with tab1:
         st.subheader("Quick stats")
+        if not ok:
+            st.warning("Configure Snowflake credentials to explore tables.")
         db = os.getenv("SNOWFLAKE_DATABASE") or ""
         schema = os.getenv("SNOWFLAKE_SCHEMA") or ""
-        if not db or not schema:
-            st.info("Set SNOWFLAKE_DATABASE and SNOWFLAKE_SCHEMA in .env to list tables here.")
+        if not ok or not db or not schema:
+            st.info("Set SNOWFLAKE_DATABASE and SNOWFLAKE_SCHEMA in .env to list tables here." if ok else "Connect to Snowflake first.")
         else:
             tables_result = list_tables(db, schema)
             if isinstance(tables_result, pd.DataFrame) and not tables_result.empty:
@@ -168,58 +194,88 @@ def main() -> None:
                 st.info("No tables found in the configured database/schema.")
 
     with tab2:
-        st.subheader("Run SQL & visualize")
-        default_sql = """
--- Example: warehouse credit usage (requires ACCOUNT_USAGE role)
--- SELECT DATE_TRUNC('day', START_TIME) AS DAY, SUM(CREDITS_USED) AS CREDITS
--- FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
--- WHERE START_TIME >= DATEADD('day', -30, CURRENT_TIMESTAMP())
--- GROUP BY 1 ORDER BY 1;
+        if not ok:
+            st.warning("Configure Snowflake credentials to explore meeting insights.")
+        st.subheader("Meeting Insights")
 
--- Or query your own tables, e.g.:
--- SELECT * FROM your_table LIMIT 1000;
-"""
-        sql = st.text_area("SQL query", value=default_sql, height=120)
-        if st.button("Run query"):
-            # Extract first non-empty, non-comment line that looks like SELECT
-            lines = [l.strip() for l in sql.splitlines() if l.strip() and not l.strip().startswith("--")]
-            query = " ".join(lines) if lines else ""
-            if not query or "SELECT" not in query.upper():
-                st.warning("Enter a valid SELECT query.")
-            else:
-                with st.spinner("Executing..."):
-                    result = run_query(query)
-                if isinstance(result, str):
-                    st.error(result)
-                else:
-                    st.success(f"Returned {len(result)} rows")
-                    st.dataframe(result, use_container_width=True, hide_index=True)
-                    st.divider()
-                    st.subheader("Visualization")
-                    render_charts(result)
+        # 1. Image ID + placeholder images
+        st.markdown("#### Participants")
+        image_ids = DEMO_IMAGE_IDS
+        db, schema = os.getenv("SNOWFLAKE_DATABASE") or "", os.getenv("SNOWFLAKE_SCHEMA") or ""
+        if ok and db and schema:
+            participants_result = run_query(
+                f'SELECT DISTINCT image_id FROM {db}.{schema}.transcript ORDER BY IMAGE_ID'
+            )
+            most_frequent = run_query(
+                f"SELECT IMAGE_ID FROM {db}.{schema}.transcript GROUP BY IMAGE_ID ORDER BY COUNT(*) DESC LIMIT 1"
+            )
+            most_frequent_id = most_frequent.iloc[0, 0]
 
-    with tab3:
-        st.subheader("Explore tables")
-        db = st.text_input("Database", value=os.getenv("SNOWFLAKE_DATABASE", ""))
-        schema = st.text_input("Schema", value=os.getenv("SNOWFLAKE_SCHEMA", ""))
-        if db and schema:
-            if st.button("List tables"):
-                tables_result = list_tables(db, schema)
-                if isinstance(tables_result, pd.DataFrame):
-                    st.dataframe(tables_result, use_container_width=True, hide_index=True)
-                    for tn in tables_result["TABLE_NAME"].tolist():
-                        with st.expander(f"📋 {tn}"):
-                            preview_sql = f'SELECT * FROM "{db}"."{schema}"."{tn}" LIMIT 100'
-                            if st.button("Preview", key=f"preview_{tn}"):
-                                df = run_query(preview_sql)
-                                if isinstance(df, pd.DataFrame):
-                                    st.dataframe(df, use_container_width=True, hide_index=True)
-                                    render_charts(df)
-                                else:
-                                    st.error(df)
-                else:
-                    st.error(str(tables_result))
+            if isinstance(participants_result, pd.DataFrame) and not participants_result.empty:
+                image_ids = participants_result["IMAGE_ID"].astype(str).tolist()
+        n_cols = min(len(image_ids), 4) or 1
+        cols = st.columns(n_cols)
+        for i, img_id in enumerate(image_ids):
+            with cols[i % n_cols]:
+                st.image("jellyfish.jpg", caption=img_id, use_container_width=True)
+                if str(img_id) == str(most_frequent_id):
+                    st.success("Most Active Speaker!")
+                
+        st.divider()
 
+        # 2. Summary
+        st.markdown("#### Summary")
+        if ok and db and schema:
+            chunks = run_query(f"SELECT LISTAGG(chunk, ' ') FROM {db}.{schema}.transcript")
+            st.text(summarize(chunks.iloc[0, 0]))
+            
 
+        # 3. Bar chart: average volume per speaker
+        st.markdown("#### Average Volume by Speaker")
+        speaker_data = pd.DataFrame(DEMO_SPEAKER_VOLUMES)
+        if ok and db and schema:
+            vol_result = run_query(f"""
+                SELECT speaker_id AS speaker, AVG(volume) AS avg_volume
+                FROM {db}.{schema}.transcript
+                GROUP BY speaker_id
+            """)
+            if isinstance(vol_result, pd.DataFrame) and not vol_result.empty:
+                speaker_data = vol_result
+        if not speaker_data.empty:
+            chart_df = speaker_data.set_index(speaker_data.columns[0])
+            st.bar_chart(chart_df)
+        else:
+            st.info("No speaker volume data. Use demo or add a captions table with speaker_id, volume.")
+
+        st.divider()
+
+        # 4. Meeting highlights
+        st.markdown("#### Highlights")
+        highlights = DEMO_HIGHLIGHTS
+        if ok and db and schema:
+            hl_result = run_query(f'SELECT text, timestamp, tone FROM "{db}"."{schema}".transcript')
+            if isinstance(hl_result, pd.DataFrame) and not hl_result.empty:
+                highlights = hl_result.to_dict("records")
+        for h in highlights:
+            with st.container():
+                st.markdown(f"**{h.get('timestamp', '-')}** — *{h.get('tone', '')}*")
+                st.markdown(f"> {h.get('text', '')}")
+                st.caption("---")
+
+        # 5. Automatic Task Detection
+        st.markdown("#### Tasks")
+        st.markdown("""
+        - 🔥 **Send follow-up email to recruiter**  
+        _High Priority_
+
+        - 📊 **Finish Snowflake streaming integration**  
+        _Due Tomorrow_
+
+        - 🧠 **Review discrete math notes**  
+        _Study Block_
+
+        - 💪 **Workout - 30 min cardio**  
+        _Personal Goal_
+        """)
 if __name__ == "__main__":
     main()

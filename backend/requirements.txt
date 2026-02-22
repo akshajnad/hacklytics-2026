@@ -5,3 +5,4 @@ python-dotenv>=1.0.0
 snowflake-connector-python>=3.9.0
 streamlit>=1.28.0
 pandas>=2.0.0
+Pillow>=10.0.0
