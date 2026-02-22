@@ -6,6 +6,8 @@ from backend.src.tone_analysis.client import summarize
 import os
 import sys
 import logging
+import base64
+import re
 from pathlib import Path
 
 # Ensure repo root is on path for backend.src imports
@@ -26,6 +28,37 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 logger = logging.getLogger(__name__)
 
+show_actual_data = False
+images = []
+
+
+def _safe_face_id_filename(face_id: object, fallback: str) -> str:
+    raw = str(face_id).strip()
+    if not raw:
+        raw = fallback
+    return re.sub(r"[^A-Za-z0-9._-]", "_", raw)
+
+
+def _save_participant_images(participants: list[dict]) -> int:
+    images_dir = Path(__file__).resolve().parent / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
+
+    saved = 0
+    for idx, participant in enumerate(participants):
+        face_id = participant.get("speaker_id") or participant.get("face_id") or f"face_{idx}"
+        image_b64 = participant.get("image_base64_jpeg") or participant.get("image_base64")
+        if not image_b64:
+            continue
+
+        try:
+            image_bytes = base64.b64decode(image_b64, validate=True)
+            with Image.open(io.BytesIO(image_bytes)) as img:
+                out_path = images_dir / f"{_safe_face_id_filename(face_id, f'face_{idx}')}.png"
+                img.convert("RGB").save(out_path, format="PNG")
+            saved += 1
+        except Exception as exc:
+            logger.warning("Failed to save participant image for face_id=%s: %s", face_id, exc)
+    return saved
 
 def handle_meeting_payload_placeholder(payload: dict) -> None:
     """Temporary sink for meeting payloads sent from iOS.
@@ -44,6 +77,8 @@ def handle_meeting_payload_placeholder(payload: dict) -> None:
         started_at,
         ended_at,
     )
+    saved_count = _save_participant_images(participants)
+    logger.info("Saved %s participant images as PNG in backend/src/dashboard/images", saved_count)
 
 
 @st.cache_resource(ttl=300)
