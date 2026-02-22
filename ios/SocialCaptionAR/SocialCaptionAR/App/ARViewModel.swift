@@ -19,9 +19,10 @@ final class ARViewModel: ObservableObject {
     @Published var wsStatus: String = "Disconnected"
     @Published var isMirrored: Bool = true
 
-    // NEW: publish pose so debug overlay can render skeleton/arm boxes
+    // Pose data for debug overlay
     @Published var poseBodies: [VisionPoseTracker.BodyPose] = []
     @Published var poseHandPoints: [CGPoint] = []
+    @Published var perFaceScores: [UUID: Double] = [:]
 
     let camera = CameraManager()
 
@@ -36,7 +37,7 @@ final class ARViewModel: ObservableObject {
     @Published var wsURLString: String = "ws://127.0.0.1:8000/ws"
 
     // cached pose (so face + pose don’t have to finish same moment)
-    private var latestPose: VisionPoseTracker.Output = .init(bodies: [], handPoints: [])
+    private var latestPose: VisionPoseTracker.Output = .init(bodies: [], handFingerCentroids: [], handPoints: [])
 
     func start() async {
         await camera.start()
@@ -93,8 +94,11 @@ final class ARViewModel: ObservableObject {
                 let out = self.speakerDetector.update(
                     faces: tracked,
                     bodies: self.latestPose.bodies,
+                    handFingerCentroids: self.latestPose.handFingerCentroids,
                     now: now
                 )
+
+                self.perFaceScores = out.perFaceScores
 
                 if let id = out.activeFaceId {
                     self.activeFaceId = id

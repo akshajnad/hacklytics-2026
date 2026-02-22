@@ -31,6 +31,7 @@ struct LiveView: View {
                     activeFaceId: vm.activeFaceId,
                     bodies: vm.poseBodies,
                     handPoints: vm.poseHandPoints,
+                    perFaceScores: vm.perFaceScores,
                     previewLayer: layer
                 )
             }
