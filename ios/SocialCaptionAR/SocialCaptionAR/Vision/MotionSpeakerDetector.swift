@@ -8,21 +8,19 @@
 import Foundation
 import CoreGraphics
 
-/// Speaker selection driven primarily by hand visibility + arm motion.
+/// Speaker = whoever has visible hands. Period.
 ///
 /// Demo scenario:
 ///   - Non-speakers keep hands hidden (under desk / behind back).
-///   - The active speaker gestures with visible hands/arms.
+///   - The active speaker has hands visible (gesturing, on table, etc.).
 ///
-/// Scoring per face:
-///   1. handsVisible (smoothed EMA) * wHands   — dominant signal
-///   2. armMotionEnergy (wrist/elbow EMA)       — secondary continuous signal
-///   3. mouthMotionEnergy                       — tie-breaker only
+/// Scoring: hand visibility EMA (0..1) is the only real decider.
+/// Arm motion and mouth motion are tracked but contribute negligible
+/// tie-breaker weight (~0.1% of hand score) — they only matter when
+/// two people both have equally visible hands.
 ///
-/// Hysteresis: challenger must beat current by `winRatio` AND hold lead for
-/// `switchHoldDuration`; after a switch the winner is locked for `lockDuration`.
-///
-/// Always picks SOME face as active (largest-face fallback). Never nil.
+/// Hysteresis prevents flicker. Fallback = largest face if nobody's
+/// hands are visible. Never nil.
 final class MotionSpeakerDetector {
 
     struct Output {
@@ -66,10 +64,10 @@ final class MotionSpeakerDetector {
     private let motionAlpha: Double = 0.20        // EMA for motion energy
     private let handAlpha: Double = 0.12          // EMA for hand visibility (slower → resists flicker)
 
-    // Scoring weights
-    private let wHands: Double = 0.15             // huge bonus when hands are visible
-    private let wArms: Double = 1.0               // arm motion energy multiplier
-    private let wMouth: Double = 0.08             // mouth motion (tie-breaker only)
+    // Scoring weights — hand visibility is THE decision
+    private let wHands: Double = 1.0              // hand visible EMA (0..1) IS the score
+    private let wArms: Double = 0.001             // negligible tie-breaker
+    private let wMouth: Double = 0.0005           // negligible tie-breaker
 
     // Hysteresis
     private let switchHoldDuration: TimeInterval = 0.45
