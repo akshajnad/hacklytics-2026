@@ -45,6 +45,9 @@ final class ARViewModel: ObservableObject {
     private var lastWebSocketCaptionAt: TimeInterval?
     private var webSocketWatchdogTask: Task<Void, Never>?
 
+    private var lastSpeechTextAt: TimeInterval?
+    private var lastAudioMeterCaptionAt: TimeInterval = 0
+
     // cached pose (so face + pose don’t have to finish same moment)
     private var latestPose: VisionPoseTracker.Output = .init(bodies: [], handFingerCentroids: [], handPoints: [])
 
@@ -91,13 +94,15 @@ final class ARViewModel: ObservableObject {
                 guard let self else { return }
                 guard !self.isUsingWebSocket else { return }
 
+                let now = Date().timeIntervalSince1970
+                self.lastSpeechTextAt = now
                 self.latestCaption = CaptionBubbleState(
                     text: text,
                     tone: self.fallbackTone,
                     volume: self.fallbackVolume,
                     isFinal: isFinal,
                     anchorFaceId: self.activeFaceId,
-                    receivedAt: Date().timeIntervalSince1970
+                    receivedAt: now
                 )
             }
         }
@@ -134,6 +139,29 @@ final class ARViewModel: ObservableObject {
                         receivedAt: Date().timeIntervalSince1970
                     )
                 }
+            }
+        }
+
+        speechManager.onAudioLevelUpdate = { [weak self] normalizedLevel in
+            Task { @MainActor in
+                guard let self else { return }
+                guard !self.isUsingWebSocket else { return }
+
+                let now = Date().timeIntervalSince1970
+                let recentSpeech = (self.lastSpeechTextAt.map { now - $0 < 1.5 }) ?? false
+                guard !recentSpeech else { return }
+                guard (now - self.lastAudioMeterCaptionAt) >= 0.2 else { return }
+
+                let percent = Int((normalizedLevel * 100).rounded())
+                self.lastAudioMeterCaptionAt = now
+                self.latestCaption = CaptionBubbleState(
+                    text: "Listening… mic level: \(percent)%",
+                    tone: self.fallbackTone,
+                    volume: normalizedLevel,
+                    isFinal: false,
+                    anchorFaceId: self.activeFaceId,
+                    receivedAt: now
+                )
             }
         }
 
@@ -245,6 +273,7 @@ final class ARViewModel: ObservableObject {
         isUsingWebSocket = shouldUseWebSocket
         if shouldUseWebSocket {
             speechManager.stop()
+            lastSpeechTextAt = nil
         } else {
             if latestCaption == nil {
                 latestCaption = CaptionBubbleState(

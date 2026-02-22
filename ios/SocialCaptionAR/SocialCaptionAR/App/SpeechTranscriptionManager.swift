@@ -1,6 +1,7 @@
 import Foundation
 import Speech
 import AVFoundation
+import Accelerate
 
 final class SpeechTranscriptionManager {
     private let audioEngine = AVAudioEngine()
@@ -15,6 +16,7 @@ final class SpeechTranscriptionManager {
     var onTextUpdate: ((String, Bool) -> Void)?
     var onAvailabilityChanged: ((Bool) -> Void)?
     var onStatusUpdate: ((String) -> Void)?
+    var onAudioLevelUpdate: ((Double) -> Void)?
 
     func start() {
         processingQueue.async { [weak self] in
@@ -100,7 +102,9 @@ final class SpeechTranscriptionManager {
         let inputNode = audioEngine.inputNode
         inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, _ in
-            self?.recognitionRequest?.append(buffer)
+            guard let self else { return }
+            self.recognitionRequest?.append(buffer)
+            self.publishAudioLevel(self.normalizedPower(from: buffer))
         }
 
         audioEngine.prepare()
@@ -212,5 +216,25 @@ final class SpeechTranscriptionManager {
         DispatchQueue.main.async { [weak self] in
             self?.onStatusUpdate?(status)
         }
+    }
+
+    private func publishAudioLevel(_ level: Double) {
+        DispatchQueue.main.async { [weak self] in
+            self?.onAudioLevelUpdate?(level)
+        }
+    }
+
+    private func normalizedPower(from buffer: AVAudioPCMBuffer) -> Double {
+        guard let channelData = buffer.floatChannelData?[0] else { return 0 }
+        let frameLength = Int(buffer.frameLength)
+        guard frameLength > 0 else { return 0 }
+
+        var rms: Float = 0
+        vDSP_rmsqv(channelData, 1, &rms, vDSP_Length(frameLength))
+
+        let minDb: Float = -50
+        let db = 20 * log10(max(rms, 0.000_001))
+        let clamped = max(minDb, min(0, db))
+        return Double((clamped - minDb) / -minDb)
     }
 }
