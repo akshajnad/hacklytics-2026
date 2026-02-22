@@ -199,9 +199,9 @@ final class ARViewModel: ObservableObject {
             anchorFaceId: anchorFaceId,
             receivedAt: now
         )
-        // Detect "Om" or "Ohm" mention (word-boundary, case-insensitive).
+        // Detect "Akshaj" mention (word-boundary, case-insensitive).
         // Show bubble above the speaker who said it.
-        if let _ = ev.text.range(of: #"\b(om|ohm)\b"#, options: [.regularExpression, .caseInsensitive]) {
+        if let _ = ev.text.range(of: #"\bakshaj\b"#, options: [.regularExpression, .caseInsensitive]) {
             self.nameMentionFaceId = anchorFaceId
             self.nameMentionUntil = now + 5.0
         }
