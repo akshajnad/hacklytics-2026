@@ -34,8 +34,6 @@ struct LiveView: View {
                 DebugVisionOverlayView(
                     faces: vm.faces,
                     activeFaceId: vm.activeFaceId,
-                    bodies: vm.poseBodies,
-                    handPoints: vm.poseHandPoints,
                     perFaceScores: vm.perFaceScores,
                     previewLayer: layer
                 )

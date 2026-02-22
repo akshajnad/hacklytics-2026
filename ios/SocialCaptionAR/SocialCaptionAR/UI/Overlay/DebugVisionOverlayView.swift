@@ -12,8 +12,6 @@ import AVFoundation
 struct DebugVisionOverlayView: View {
     let faces: [TrackedFace]
     let activeFaceId: UUID?
-    let bodies: [VisionPoseTracker.BodyPose]
-    let handPoints: [CGPoint]
     let perFaceScores: [UUID: Double]
     let previewLayer: AVCaptureVideoPreviewLayer
 
@@ -68,81 +66,9 @@ struct DebugVisionOverlayView: View {
                 }
             }
 
-            // --- Body arm skeletons + arm bounding boxes ---
-            for b in bodies {
-                drawArm(
-                    ctx: &ctx,
-                    shoulder: b.leftShoulder,
-                    elbow: b.leftElbow,
-                    wrist: b.leftWrist,
-                    color: .cyan
-                )
-                drawArm(
-                    ctx: &ctx,
-                    shoulder: b.rightShoulder,
-                    elbow: b.rightElbow,
-                    wrist: b.rightWrist,
-                    color: .cyan
-                )
-            }
 
-            // --- Hand points ---
-            for hp in handPoints {
-                let pt = layerPoint(fromVisionPoint: hp)
-                let dot = CGRect(x: pt.x - 3, y: pt.y - 3, width: 6, height: 6)
-                ctx.fill(Path(ellipseIn: dot), with: .color(.pink))
-            }
         }
         .allowsHitTesting(false)
-    }
-
-    // MARK: - Arm drawing helpers
-
-    private func drawArm(ctx: inout GraphicsContext,
-                         shoulder: CGPoint?,
-                         elbow: CGPoint?,
-                         wrist: CGPoint?,
-                         color: Color) {
-        let pts = [shoulder, elbow, wrist].compactMap { $0 }
-        guard !pts.isEmpty else { return }
-
-        // Skeleton lines
-        if let s = shoulder, let e = elbow {
-            strokeLine(ctx: &ctx, a: layerPoint(fromVisionPoint: s), b: layerPoint(fromVisionPoint: e), color: color, width: 3)
-        }
-        if let e = elbow, let w = wrist {
-            strokeLine(ctx: &ctx, a: layerPoint(fromVisionPoint: e), b: layerPoint(fromVisionPoint: w), color: color, width: 3)
-        }
-
-        // Joint dots
-        for p in pts {
-            let lp = layerPoint(fromVisionPoint: p)
-            let dot = CGRect(x: lp.x - 4, y: lp.y - 4, width: 8, height: 8)
-            ctx.fill(Path(ellipseIn: dot), with: .color(color))
-        }
-
-        // Arm bounding box around available joints
-        let layerPts = pts.map { layerPoint(fromVisionPoint: $0) }
-        if let bb = boundingRect(of: layerPts) {
-            ctx.stroke(Path(bb), with: .color(color.opacity(0.9)), lineWidth: 2)
-        }
-    }
-
-    private func strokeLine(ctx: inout GraphicsContext, a: CGPoint, b: CGPoint, color: Color, width: CGFloat) {
-        var p = Path()
-        p.move(to: a)
-        p.addLine(to: b)
-        ctx.stroke(p, with: .color(color), lineWidth: width)
-    }
-
-    private func boundingRect(of pts: [CGPoint]) -> CGRect? {
-        guard let minX = pts.map(\.x).min(),
-              let maxX = pts.map(\.x).max(),
-              let minY = pts.map(\.y).min(),
-              let maxY = pts.map(\.y).max()
-        else { return nil }
-        let pad: CGFloat = 8
-        return CGRect(x: minX - pad, y: minY - pad, width: (maxX - minX) + 2*pad, height: (maxY - minY) + 2*pad)
     }
 
     // MARK: - Coordinate conversion
