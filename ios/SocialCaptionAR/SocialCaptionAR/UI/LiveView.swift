@@ -20,6 +20,7 @@ struct LiveView: View {
                 SpeakerAnchorOverlayView(
                     faces: vm.faces,
                     activeFaceId: vm.activeFaceId,
+                    latestCaption: vm.latestCaption,
                     previewLayer: layer
                 )
             }
