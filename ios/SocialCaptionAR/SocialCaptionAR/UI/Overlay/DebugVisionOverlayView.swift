@@ -14,11 +14,12 @@ struct DebugVisionOverlayView: View {
     let activeFaceId: UUID?
     let bodies: [VisionPoseTracker.BodyPose]
     let handPoints: [CGPoint]
+    let perFaceScores: [UUID: Double]
     let previewLayer: AVCaptureVideoPreviewLayer
 
     var body: some View {
         Canvas { ctx, size in
-            // --- Faces + mouths ---
+            // --- Faces + mouths + score labels ---
             for f in faces {
                 let rect = layerRect(forVisionBBox: f.visionBoundingBox)
                 let isActive = (f.id == activeFaceId)
@@ -30,12 +31,33 @@ struct DebugVisionOverlayView: View {
                     lineWidth: isActive ? 3 : 2
                 )
 
-                // Mouth landmarks (map from face-local normalized -> image normalized -> layer)
-                // NOTE: your mouthPoints are currently face-local (0..1) in Vision face coords.
-                // For debug purposes, we'll just scatter them inside the face box.
+                // "ACTIVE" label above face box
+                if isActive {
+                    let labelPt = CGPoint(x: rect.midX, y: rect.minY - 22)
+                    ctx.draw(
+                        Text("ACTIVE")
+                            .font(.system(size: 13, weight: .heavy, design: .monospaced))
+                            .foregroundColor(.green),
+                        at: labelPt,
+                        anchor: .bottom
+                    )
+                }
+
+                // Per-face score below face box
+                let score = perFaceScores[f.id] ?? 0
+                let scoreStr = String(format: "%.4f", score)
+                let scorePt = CGPoint(x: rect.midX, y: rect.maxY + 4)
+                ctx.draw(
+                    Text(scoreStr)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundColor(isActive ? .green : .yellow),
+                    at: scorePt,
+                    anchor: .top
+                )
+
+                // Mouth landmarks (face-local normalized -> image normalized -> layer)
                 if !f.mouthPoints.isEmpty {
                     for p in f.mouthPoints {
-                        // mouth points are in face local coords bottom-left; place them into bbox:
                         let xN = f.visionBoundingBox.minX + p.x * f.visionBoundingBox.width
                         let yN = f.visionBoundingBox.minY + p.y * f.visionBoundingBox.height
                         let pt = layerPoint(fromVisionPoint: CGPoint(x: xN, y: yN))
@@ -48,7 +70,6 @@ struct DebugVisionOverlayView: View {
 
             // --- Body arm skeletons + arm bounding boxes ---
             for b in bodies {
-                // Left arm
                 drawArm(
                     ctx: &ctx,
                     shoulder: b.leftShoulder,
@@ -56,8 +77,6 @@ struct DebugVisionOverlayView: View {
                     wrist: b.leftWrist,
                     color: .cyan
                 )
-
-                // Right arm
                 drawArm(
                     ctx: &ctx,
                     shoulder: b.rightShoulder,
@@ -67,7 +86,7 @@ struct DebugVisionOverlayView: View {
                 )
             }
 
-            // --- Hand points (optional) ---
+            // --- Hand points ---
             for hp in handPoints {
                 let pt = layerPoint(fromVisionPoint: hp)
                 let dot = CGRect(x: pt.x - 3, y: pt.y - 3, width: 6, height: 6)
@@ -122,24 +141,18 @@ struct DebugVisionOverlayView: View {
               let minY = pts.map(\.y).min(),
               let maxY = pts.map(\.y).max()
         else { return nil }
-        // small padding so it looks like a box
         let pad: CGFloat = 8
         return CGRect(x: minX - pad, y: minY - pad, width: (maxX - minX) + 2*pad, height: (maxY - minY) + 2*pad)
     }
 
     // MARK: - Coordinate conversion
 
-    /// Vision points are normalized (0..1) with origin bottom-left.
-    /// AVCaptureVideoPreviewLayer uses captureDevicePoint normalized with origin top-left.
     private func layerPoint(fromVisionPoint p: CGPoint) -> CGPoint {
         let capture = CGPoint(x: p.x, y: 1.0 - p.y)
         return previewLayer.layerPointConverted(fromCaptureDevicePoint: capture)
     }
 
-    /// Vision face bbox: normalized (0..1), origin bottom-left.
-    /// Convert to a rect in preview layer coords.
     private func layerRect(forVisionBBox bb: CGRect) -> CGRect {
-        // Convert to captureDeviceRect (origin top-left)
         let capture = CGRect(
             x: bb.minX,
             y: 1.0 - bb.maxY,

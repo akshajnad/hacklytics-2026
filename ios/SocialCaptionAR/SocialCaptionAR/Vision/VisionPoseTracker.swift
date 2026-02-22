@@ -38,7 +38,11 @@ final class VisionPoseTracker {
 
     struct Output {
         let bodies: [BodyPose]
-        let handPoints: [CGPoint] // normalized, bottom-left
+        /// Centroid of detected finger joints per hand — only emitted when
+        /// at least 2 finger MCP/MP joints are visible (i.e. actual hand
+        /// open in frame, not just a wrist). Used for face association.
+        let handFingerCentroids: [CGPoint]
+        let handPoints: [CGPoint]   // all hand joint points (for debug overlay)
     }
 
     func processFrame(pixelBuffer: CVPixelBuffer,
@@ -55,7 +59,7 @@ final class VisionPoseTracker {
             do {
                 try self.handler.perform([bodyReq, handReq], on: pixelBuffer, orientation: self.orientation)
             } catch {
-                completion(Output(bodies: [], handPoints: []))
+                completion(Output(bodies: [], handFingerCentroids: [], handPoints: []))
                 return
             }
 
@@ -80,22 +84,42 @@ final class VisionPoseTracker {
                 }
             }
 
+            var handFingerCentroids: [CGPoint] = []
             var handPts: [CGPoint] = []
+            let minFingersRequired = 2  // need at least 2 finger joints visible
+
             if let hands = handReq.results as? [VNHumanHandPoseObservation] {
                 for h in hands.prefix(4) {
-                    let joints: [VNHumanHandPoseObservation.JointName] = [
-                        .wrist,
+                    // Collect wrist for debug
+                    if let w = try? h.recognizedPoint(.wrist), w.confidence >= 0.3 {
+                        handPts.append(CGPoint(x: w.location.x, y: w.location.y))
+                    }
+
+                    // Collect finger MCP/MP joints
+                    let fingerJoints: [VNHumanHandPoseObservation.JointName] = [
                         .thumbMP, .indexMCP, .middleMCP, .ringMCP, .littleMCP
                     ]
-                    for j in joints {
+                    var fingerPts: [CGPoint] = []
+                    for j in fingerJoints {
                         if let p = try? h.recognizedPoint(j), p.confidence >= 0.3 {
-                            handPts.append(CGPoint(x: p.location.x, y: p.location.y))
+                            let pt = CGPoint(x: p.location.x, y: p.location.y)
+                            fingerPts.append(pt)
+                            handPts.append(pt)
                         }
+                    }
+
+                    // Only count this hand as "visible" if enough finger joints detected
+                    if fingerPts.count >= minFingersRequired {
+                        var sx: Double = 0, sy: Double = 0
+                        for p in fingerPts { sx += Double(p.x); sy += Double(p.y) }
+                        let centroid = CGPoint(x: sx / Double(fingerPts.count),
+                                               y: sy / Double(fingerPts.count))
+                        handFingerCentroids.append(centroid)
                     }
                 }
             }
 
-            completion(Output(bodies: bodiesOut, handPoints: handPts))
+            completion(Output(bodies: bodiesOut, handFingerCentroids: handFingerCentroids, handPoints: handPts))
         }
     }
 

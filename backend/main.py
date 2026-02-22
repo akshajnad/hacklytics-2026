@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 
 from backend.src.audio.capture import capture_audio_loop
 from backend.src.stt.elevenlabs_client import run_elevenlabs_client
-from backend.src.tone_analysis.client import sentiment
-from backend.src.ws_server.server import send_caption, create_server
+from backend.src.tone.classifier import ToneClassifier
+from backend.src.ws_server.server import broadcast_caption, create_server
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,11 +37,27 @@ async def main() -> None:
         loop.call_soon_threadsafe(audio_queue.put_nowait, (pcm_bytes, volume_rms))
 
     def on_transcript(text: str, caption_type: str) -> None:
-        logger.info("Transcript [%s]: %s", caption_type, text[:80] + ("..." if len(text) > 80 else ""))
-        # Use Snowflake-based sentiment analysis for tone
-        result = sentiment(text)
-        tone = result.get("tone", "neutral") if isinstance(result, dict) else "neutral"
-        asyncio.create_task(send_caption(text, tone, latest_volume[0]))
+        logger.info(
+            "Transcript [%s]: %s",
+            caption_type,
+            text[:80] + ("..." if len(text) > 80 else "")
+        )
+
+        # ✅ Use new classifier
+        tone, confidence = tone_classifier.classify_tone(
+            text=text,
+            volume=latest_volume[0],
+        )
+
+        asyncio.create_task(
+            broadcast_caption(
+                text=text,
+                caption_type=caption_type,
+                tone=tone,
+                confidence=confidence,
+                volume=latest_volume[0],
+            )
+        )
 
     capture_stop = threading.Event()
     capture_thread = threading.Thread(

@@ -7,9 +7,11 @@ struct LiveView: View {
     @State private var previewLayer: AVCaptureVideoPreviewLayer? = nil
     @State private var showSettings = false
     @State private var debugOverlayEnabled = false
+    @State private var isMeetingRecording = false
+    @State private var showMeetingSavedBanner = false
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .top) {
             CameraPreviewView(session: vm.camera.session, onPreviewLayer: { layer in
                 if previewLayer == nil { previewLayer = layer }
             })
@@ -31,20 +33,60 @@ struct LiveView: View {
                     activeFaceId: vm.activeFaceId,
                     bodies: vm.poseBodies,
                     handPoints: vm.poseHandPoints,
+                    perFaceScores: vm.perFaceScores,
                     previewLayer: layer
                 )
             }
 
-            Button { showSettings = true } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(10)
-                    .background(.black.opacity(0.5))
-                    .clipShape(Circle())
-                    .padding(.top, 14)
-                    .padding(.trailing, 14)
+            VStack(spacing: 10) {
+                if showMeetingSavedBanner {
+                    Text("Meeting saved!")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(.black.opacity(0.75))
+                        .clipShape(Capsule())
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                HStack {
+                    Button {
+                        toggleMeetingRecording()
+                    } label: {
+                        if isMeetingRecording {
+                            Image(systemName: "record.circle.fill")
+                                .font(.system(size: 24, weight: .bold))
+                                .foregroundStyle(.red)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(.black.opacity(0.5))
+                                .clipShape(Capsule())
+                        } else {
+                            Text("Start meeting")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(.black.opacity(0.5))
+                                .clipShape(Capsule())
+                        }
+                    }
+
+                    Spacer()
+
+                    Button { showSettings = true } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(10)
+                            .background(.black.opacity(0.5))
+                            .clipShape(Circle())
+                    }
+                }
             }
+            .padding(.top, 14)
+            .padding(.horizontal, 14)
         }
         .sheet(isPresented: $showSettings) {
             NavigationView {
@@ -63,5 +105,25 @@ struct LiveView: View {
         }
         .task { await vm.start() }
         .onDisappear { vm.stop() }
+    }
+
+    private func toggleMeetingRecording() {
+        if isMeetingRecording {
+            isMeetingRecording = false
+            withAnimation {
+                showMeetingSavedBanner = true
+            }
+
+            Task {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                await MainActor.run {
+                    withAnimation {
+                        showMeetingSavedBanner = false
+                    }
+                }
+            }
+        } else {
+            isMeetingRecording = true
+        }
     }
 }
