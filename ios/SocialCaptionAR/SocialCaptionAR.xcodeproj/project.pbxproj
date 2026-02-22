@@ -401,6 +401,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "using camera";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Microphone access is needed to transcribe live speech when WebSocket captions are unavailable.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Speech recognition is used as a fallback caption source when backend captions are unavailable.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -435,6 +437,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "using camera";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Microphone access is needed to transcribe live speech when WebSocket captions are unavailable.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Speech recognition is used as a fallback caption source when backend captions are unavailable.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
