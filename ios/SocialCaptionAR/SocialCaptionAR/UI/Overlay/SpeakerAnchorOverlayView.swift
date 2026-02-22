@@ -11,13 +11,16 @@ import AVFoundation
 struct SpeakerAnchorOverlayView: View {
     let faces: [TrackedFace]
     let activeFaceId: UUID?
+    let latestCaption: CaptionBubbleState?
     let previewLayer: AVCaptureVideoPreviewLayer
 
-    // Placeholder tone for when you want the UI to always render
     private let defaultTone = Tone(label: "neutral", confidence: 0.0, hex: "#9CA3AF")
 
     var body: some View {
-        if let id = activeFaceId,
+        let captionAnchorId = latestCaption?.anchorFaceId
+        let faceIdToRender = captionAnchorId ?? activeFaceId
+
+        if let id = faceIdToRender,
            let face = faces.first(where: { $0.id == id }) {
 
             // IMPORTANT: Vision bbox is bottom-left origin.
@@ -32,12 +35,10 @@ struct SpeakerAnchorOverlayView: View {
             let rect = previewLayer.layerRectConverted(fromMetadataOutputRect: metaRect)
 
             VStack(spacing: 10) {
-                // If you want “always visible”, keep this placeholder.
-                // Once WS events are flowing, you’ll replace these with vm.latestCaption values.
                 CaptionBubbleView(
-                    text: "",
-                    tone: defaultTone,
-                    volume: 0.0
+                    text: latestCaption?.text ?? "Listening…",
+                    tone: latestCaption?.tone ?? defaultTone,
+                    volume: latestCaption?.volume ?? 0.0
                 )
                 .opacity(0.85)
             }

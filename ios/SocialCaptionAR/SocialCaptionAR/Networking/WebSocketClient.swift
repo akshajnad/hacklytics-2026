@@ -14,6 +14,7 @@ final class WebSocketClient {
 
     var onCaptionEvent: ((CaptionEvent) -> Void)?
     var onStatus: ((String) -> Void)?
+    var onConnectionStateChange: ((Bool) -> Void)?
 
     func connect(url: URL) {
         disconnect()
@@ -23,12 +24,14 @@ final class WebSocketClient {
         task?.resume()
 
         onStatus?("Connected")
+        onConnectionStateChange?(true)
         receiveLoop()
     }
 
     func disconnect() {
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
+        onConnectionStateChange?(false)
         onStatus?("Disconnected")
     }
 
@@ -38,6 +41,8 @@ final class WebSocketClient {
 
             switch result {
             case .failure(let err):
+                self.task = nil
+                self.onConnectionStateChange?(false)
                 self.onStatus?("WS error: \(err.localizedDescription)")
                 return
 
