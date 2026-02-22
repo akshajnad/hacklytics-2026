@@ -8,19 +8,7 @@
 import Foundation
 import CoreGraphics
 
-/// Speaker = whoever has visible hands. Period.
-///
-/// Demo scenario:
-///   - Non-speakers keep hands hidden (under desk / behind back).
-///   - The active speaker has hands visible (gesturing, on table, etc.).
-///
-/// Scoring: hand visibility EMA (0..1) is the only real decider.
-/// Arm motion and mouth motion are tracked but contribute negligible
-/// tie-breaker weight (~0.1% of hand score) — they only matter when
-/// two people both have equally visible hands.
-///
-/// Hysteresis prevents flicker. Fallback = largest face if nobody's
-/// hands are visible. Never nil.
+
 final class MotionSpeakerDetector {
 
     struct Output {
